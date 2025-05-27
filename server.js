@@ -1,26 +1,22 @@
-//server.js
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+require('dotenv').config();
 
 const app = express();
-const PORT = 5000;
-const JWT_SECRET = 'your_super_secret_key'; // Replace with a secure secret in production
+const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key';
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
-mongoose.connect('mongodb://127.0.0.1:27017/tender_db', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.error(err));
+// MongoDB connection (Updated: removed deprecated options)
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Mongoose schema
 const tenderSchema = new mongoose.Schema({
@@ -28,18 +24,17 @@ const tenderSchema = new mongoose.Schema({
   phone: String,
   email: String,
   amount: Number,
-}, { timestamps: true });  // <--- add this option
-
+}, { timestamps: true });
 
 const Tender = mongoose.model('Tender', tenderSchema);
 
-// Hardcoded user credentials
+// Hardcoded admin user
 const adminUser = {
   username: 'admin',
-  password: bcrypt.hashSync('admin123', 10), // Hashed password
+  password: bcrypt.hashSync('admin123', 10),
 };
 
-// Login route
+// Auth endpoints
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   if (username !== adminUser.username) {
@@ -55,10 +50,11 @@ app.post('/api/login', async (req, res) => {
   res.json({ token });
 });
 
-// Auth middleware
+// JWT middleware
 const auth = (req, res, next) => {
   const token = req.headers.authorization;
   if (!token) return res.status(401).json({ message: 'No token provided' });
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -68,15 +64,13 @@ const auth = (req, res, next) => {
   }
 };
 
-// Tender routes
+// CRUD routes
 app.post('/api/tenders', auth, async (req, res) => {
   try {
-    const { name, phone, email, amount } = req.body;
-    const newTender = new Tender({ name, phone, email, amount });
+    const newTender = new Tender(req.body);
     await newTender.save();
     res.json(newTender);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -86,19 +80,16 @@ app.get('/api/tenders', auth, async (req, res) => {
     const tenders = await Tender.find();
     res.json(tenders);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
 app.get('/api/tenders/search', auth, async (req, res) => {
   try {
-    const { q } = req.query;
-    const regex = new RegExp(q, 'i');
+    const regex = new RegExp(req.query.q, 'i');
     const tenders = await Tender.find({ name: regex });
     res.json(tenders);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -108,7 +99,6 @@ app.put('/api/tenders/:id', auth, async (req, res) => {
     const updated = await Tender.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(updated);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -118,7 +108,6 @@ app.delete('/api/tenders/:id', auth, async (req, res) => {
     await Tender.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
